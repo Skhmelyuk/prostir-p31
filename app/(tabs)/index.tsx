@@ -1,9 +1,63 @@
-import { View, Text } from "react-native";
+import { Post } from "@/components/Post";
+import { COLORS } from "@/constants/theme";
+import { api } from "@/convex/_generated/api";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "convex/react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-export default function ScreenHome() {
+export default function FeedScreen() {
+  const posts = useQuery(api.posts.getPosts);
+  const { signOut } = useAuthActions();
+
+  if (posts === undefined) {
+    return (
+      <View className="flex-1 bg-black justify-center items-center">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
-    <View className="flex-1 items-center justify-center bg-black">
-      <Text className="text-white text-lg font-bold">Home</Text>
+    <View className="flex-1 bg-black">
+      {/* Хедер додатку Prostir */}
+      <View className="flex-row items-center justify-between px-4 py-3 border-b border-surface">
+        <Text className="text-2xl font-bold text-primary">Prostir</Text>
+        <TouchableOpacity
+          onPress={() => signOut()}
+          className="p-1 active:opacity-70"
+        >
+          <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Стрічка постів */}
+      <FlatList
+        data={posts}
+        renderItem={({ item }) => <Post post={item} />}
+        keyExtractor={(item) => item._id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 60 }}
+        ListEmptyComponent={
+          <View className="flex-1 justify-center items-center mt-12 px-6">
+            <Ionicons
+              name="images-outline"
+              size={48}
+              color={COLORS.grey}
+              style={{ marginBottom: 12 }}
+            />
+            <Text className="text-grey text-base text-center">
+              Постів ще немає. Створіть перший у вкладці "+"
+            </Text>
+          </View>
+        }
+      />
     </View>
   );
 }

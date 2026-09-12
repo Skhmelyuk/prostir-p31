@@ -97,8 +97,8 @@ export default defineSchema({
    * Отримати лайк за id:
    * like = await ctx.db.get(id)
    *
-   * Отримати всі лайки конкретного користувача за userId:
-   * likes = await ctx.db.query("likes").filter((q) => q.eq(q.field("userId"), id)).collect()
+   * Отримати всі лайки конкретного користувача за userId і postId:
+   * likes = await ctx.db.query("likes").filter((q) => q.eq(q.field("userId"), id) && q.eq(q.field("postId"), id)).collect()
    *
    * Отримати всі лайки конкретного поста за postId:
    * likes = await ctx.db.query("likes").filter((q) => q.eq(q.field("postId"), id)).collect()
