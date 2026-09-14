@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Image, Text, TouchableOpacity, View, Alert } from "react-native";
 import { formatDistanceToNow } from "date-fns";
 import { CommentsModal } from "./CommentsModal";
+import { useRouter } from "expo-router";
 
 export type PostProps = {
   post: {
@@ -27,6 +28,8 @@ export type PostProps = {
 };
 
 export const Post = ({ post }: PostProps) => {
+  const router = useRouter();
+
   // Локальні стани для миттєвого (оптимістичного) оновлення UI
   const [isLiked, setIsLiked] = useState(post.isLiked);
   const [likesCount, setLikesCount] = useState(post.likes);
@@ -48,6 +51,15 @@ export const Post = ({ post }: PostProps) => {
 
   // Перевірка, чи пост належить поточному користувачу
   const isOwner = currentUser?._id === post.author._id;
+
+  const handleUserPress = () => {
+    if (!post.author._id) return;
+    if (currentUser?._id === post.author._id) {
+      router.push("/(tabs)/profile");
+    } else {
+      router.push(`/user/${post.author._id}`);
+    }
+  };
 
   const handleDelete = () => {
     Alert.alert(
@@ -119,7 +131,11 @@ export const Post = ({ post }: PostProps) => {
     <View className="mb-4 bg-black">
       {/* Хедер поста: автор та аватар */}
       <View className="flex-row items-center justify-between p-3">
-        <View className="flex-row items-center">
+        <TouchableOpacity
+          onPress={handleUserPress}
+          activeOpacity={0.8}
+          className="flex-row items-center"
+        >
           <Image
             source={{ uri: post.author.image }}
             className="w-8 h-8 rounded-full mr-2.5 border border-surfaceLight"
@@ -127,7 +143,7 @@ export const Post = ({ post }: PostProps) => {
           <Text className="text-white text-sm font-semibold">
             {post.author.username}
           </Text>
-        </View>
+        </TouchableOpacity>
         {/* Кнопка меню/видалення */}
         {isOwner && (
           <TouchableOpacity

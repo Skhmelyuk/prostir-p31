@@ -1,4 +1,5 @@
 import { Post } from "@/components/Post";
+import { StoriesSection } from "@/components/StoriesSection";
 import { COLORS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -44,6 +45,7 @@ export default function FeedScreen() {
         keyExtractor={(item) => item._id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 60 }}
+        ListHeaderComponent={<StoriesSection />}
         ListEmptyComponent={
           <View className="flex-1 justify-center items-center mt-12 px-6">
             <Ionicons
