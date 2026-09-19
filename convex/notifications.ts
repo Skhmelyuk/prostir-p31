@@ -1,4 +1,5 @@
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 /**
@@ -59,3 +60,32 @@ export const getNotifications = query({
     );
   },
 });
+
+/**
+ * Безпечно видаляє сповіщення поточного користувача
+ */
+export const deleteNotification = mutation({
+  args: {
+    notificationId: v.id("notifications"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Unauthorized: Неавторизований доступ");
+    }
+
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification) {
+      throw new Error("Сповіщення не знайдено");
+    }
+
+    // Перевірка безпеки: користувач може видаляти лише адресовані йому сповіщення
+    if (notification.receiverId !== userId) {
+      throw new Error("Ви можете видаляти лише власні сповіщення");
+    }
+
+    await ctx.db.delete(args.notificationId);
+    return { success: true };
+  },
+});
+
