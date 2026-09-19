@@ -66,6 +66,9 @@ export default defineSchema({
     caption: v.optional(v.string()),
     likes: v.number(),
     comments: v.number(),
+    audioUrl: v.optional(v.string()),
+    audioStorageId: v.optional(v.id("_storage")),
+    audioDuration: v.optional(v.number()),
   }).index("by_user", ["userId"]),
 
   /**

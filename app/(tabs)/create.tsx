@@ -1,5 +1,6 @@
 import { COLORS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "expo-router";
@@ -21,6 +22,13 @@ import * as ImagePicker from "expo-image-picker";
 
 import { File } from "expo-file-system";
 import { fetch } from "expo/fetch";
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+} from "expo-audio";
+import { PostAudioPlayer } from "@/components/PostAudioPlayer";
 
 export default function CreateScreen() {
   const router = useRouter();
@@ -34,6 +42,13 @@ export default function CreateScreen() {
   const [caption, setCaption] = useState<string>("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+
+  // Хуки для запису аудіосповіщення через expo-audio
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder);
+
+  const [recordedAudioUri, setRecordedAudioUri] = useState<string | null>(null);
+  const [recordedDuration, setRecordedDuration] = useState<number>(0);
 
   // Функція вибору зображення з галереї
   const pickImageFromLibrary = async () => {
@@ -71,6 +86,43 @@ export default function CreateScreen() {
     }
   };
 
+  // Керування аудіозаписом
+  const startRecording = async () => {
+    const permission = await requestRecordingPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Дозвіл відхилено",
+        "Для запису голосового сповіщення потрібен доступ до мікрофона.",
+      );
+      return;
+    }
+
+    try {
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+    } catch (error) {
+      console.error("Помилка старту запису:", error);
+      Alert.alert("Помилка", "Не вдалося розпочати запис аудіо.");
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      await audioRecorder.stop();
+      if (audioRecorder.uri) {
+        setRecordedAudioUri(audioRecorder.uri);
+        setRecordedDuration(Math.round((recorderState.durationMillis || 0) / 1000));
+      }
+    } catch (error) {
+      console.error("Помилка зупинки запису:", error);
+    }
+  };
+
+  const removeRecordedAudio = () => {
+    setRecordedAudioUri(null);
+    setRecordedDuration(0);
+  };
+
   // Головна функція для вибору способу додавання зображення
   const pickImage = () => {
     Alert.alert("Оберіть дію", "Оберіть джерело для додавання зображення", [
@@ -96,32 +148,57 @@ export default function CreateScreen() {
     try {
       setIsSharing(true);
 
-      // 1. Отримуємо одноразове посилання для завантаження файлу
-      const uploadUrl = await generateUploadUrl();
+      // 1. Отримуємо одноразове посилання для завантаження зображення
+      const imageUploadUrl = await generateUploadUrl();
+      const imageFile = new File(selectedImage);
 
-      // 2. Створюємо інстанс файлу з URI зображення через expo-file-system
-      const file = new File(selectedImage);
-
-      // 3. Завантажуємо зображення через expo/fetch API
-      const uploadResult = await fetch(uploadUrl, {
+      // 2. Завантажуємо зображення через expo/fetch API
+      const imageUploadResult = await fetch(imageUploadUrl, {
         method: "POST",
-        body: file,
+        body: imageFile,
         headers: {
           "Content-Type": "image/jpeg",
         },
       });
 
-      if (!uploadResult.ok) throw new Error("Upload failed");
+      if (!imageUploadResult.ok) throw new Error("Помилка завантаження зображення");
+      const { storageId } = await imageUploadResult.json();
 
-      // 4. Отримуємо унікальний storageId файлу
-      const { storageId } = await uploadResult.json();
+      // 3. Якщо записано аудіо — завантажуємо аудіофайл у Storage
+      let audioStorageId: Id<"_storage"> | undefined = undefined;
+      if (recordedAudioUri) {
+        const audioUploadUrl = await generateUploadUrl();
+        const audioFile = new File(recordedAudioUri);
 
-      // 5. Створюємо пост із посиланням на цей файл у БД
-      await createPost({ storageId, caption });
+        const audioUploadResult = await fetch(audioUploadUrl, {
+          method: "POST",
+          body: audioFile,
+          headers: {
+            "Content-Type": "audio/m4a",
+          },
+        });
 
-      // 6. Очищаємо форму та перенаправляємо на головний екран
+        if (!audioUploadResult.ok) {
+          throw new Error("Помилка завантаження аудіофайлу");
+        }
+
+        const audioData = await audioUploadResult.json();
+        audioStorageId = audioData.storageId;
+      }
+
+      // 4. Створюємо пост із посиланням на файли у БД
+      await createPost({
+        storageId,
+        caption,
+        audioStorageId,
+        audioDuration: recordedDuration > 0 ? Math.round(recordedDuration) : undefined,
+      });
+
+      // 5. Очищаємо форму та перенаправляємо на головний екран
       setSelectedImage(null);
       setCaption("");
+      setRecordedAudioUri(null);
+      setRecordedDuration(0);
       router.push("/(tabs)");
       Alert.alert("Успіх", "Публікацію успішно створено!");
     } catch (error) {
@@ -177,6 +254,8 @@ export default function CreateScreen() {
             onPress={() => {
               setSelectedImage(null);
               setCaption("");
+              setRecordedAudioUri(null);
+              setRecordedDuration(0);
             }}
             disabled={isSharing}
           >
@@ -252,6 +331,67 @@ export default function CreateScreen() {
                   onChangeText={setCaption}
                   editable={!isSharing}
                 />
+              </View>
+
+              {/* Блок аудіосповіщення */}
+              <View className="mt-4 p-3 rounded-2xl bg-surface border border-surfaceLight">
+                <Text className="text-grey text-xs font-semibold uppercase mb-2 tracking-wider">
+                  Аудіосповіщення до публікації
+                </Text>
+
+                {recordedAudioUri ? (
+                  <View className="gap-2">
+                    <PostAudioPlayer
+                      audioUrl={recordedAudioUri}
+                      duration={recordedDuration}
+                    />
+                    <TouchableOpacity
+                      onPress={removeRecordedAudio}
+                      className="flex-row items-center justify-center gap-1.5 py-1"
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                      <Text className="text-red-500 text-xs font-medium">
+                        Видалити аудіо
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-row items-center gap-2">
+                      <View
+                        className={`w-3 h-3 rounded-full ${
+                          recorderState.isRecording
+                            ? "bg-red-500"
+                            : "bg-grey"
+                        }`}
+                      />
+                      <Text className="text-white text-sm">
+                        {recorderState.isRecording
+                          ? `Запис: ${Math.floor((recorderState.durationMillis || 0) / 1000)} с`
+                          : "Додати голосове сповіщення"}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={
+                        recorderState.isRecording ? stopRecording : startRecording
+                      }
+                      className={`px-4 py-2 rounded-xl flex-row items-center gap-1.5 ${
+                        recorderState.isRecording ? "bg-red-600" : "bg-primary"
+                      }`}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name={recorderState.isRecording ? "stop" : "mic"}
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text className="text-white text-xs font-semibold">
+                        {recorderState.isRecording ? "Зупинити" : "Записати"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             </View>
           </View>

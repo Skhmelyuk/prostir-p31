@@ -4,9 +4,21 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import { Image, Text, TouchableOpacity, View, Alert } from "react-native";
+import {
+  Image,
+  Text,
+  TouchableOpacity,
+  View,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Alert,
+} from "react-native";
 import { formatDistanceToNow } from "date-fns";
 import { CommentsModal } from "./CommentsModal";
+import { HoldToConfirmButton } from "./HoldToConfirmButton";
+import { PostAudioPlayer } from "./PostAudioPlayer";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
 
 export type PostProps = {
@@ -19,6 +31,8 @@ export type PostProps = {
     _creationTime: number;
     isLiked: boolean;
     isBookmarked: boolean;
+    audioUrl?: string;
+    audioDuration?: number;
     author: {
       _id?: Id<"users">;
       username: string;
@@ -48,6 +62,7 @@ export const Post = ({ post }: PostProps) => {
   // Коментарі (локальний стан для модального вікна)
   const [commentsCount, setCommentsCount] = useState(post.comments);
   const [showComments, setShowComments] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Перевірка, чи пост належить поточному користувачу
   const isOwner = currentUser?._id === post.author._id;
@@ -61,26 +76,14 @@ export const Post = ({ post }: PostProps) => {
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      "Видалити пост",
-      "Ви впевнені, що хочете видалити цей пост?",
-      [
-        { text: "Скасувати", style: "cancel" },
-        {
-          text: "Видалити",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deletePost({ postId: post._id });
-            } catch (error) {
-              console.error("Помилка видалення поста:", error);
-              Alert.alert("Помилка", "Не вдалося видалити пост.");
-            }
-          },
-        },
-      ]
-    );
+  const handleConfirmDelete = async () => {
+    try {
+      await deletePost({ postId: post._id });
+      setShowDeleteModal(false);
+    } catch (error) {
+      console.error("Помилка видалення поста:", error);
+      Alert.alert("Помилка", "Не вдалося видалити публікацію.");
+    }
   };
 
   // Обробник натискання на лайк з оптимістичним оновленням
@@ -147,7 +150,7 @@ export const Post = ({ post }: PostProps) => {
         {/* Кнопка меню/видалення */}
         {isOwner && (
           <TouchableOpacity
-            onPress={handleDelete}
+            onPress={() => setShowDeleteModal(true)}
             className="p-1 active:opacity-70"
           >
             <Ionicons name="trash-outline" size={20} color={COLORS.primary} />
@@ -161,6 +164,14 @@ export const Post = ({ post }: PostProps) => {
         className="w-full aspect-square bg-surface"
         resizeMode="cover"
       />
+
+      {/* Аудіодоріжка публікації (якщо додано) */}
+      {post.audioUrl ? (
+        <PostAudioPlayer
+          audioUrl={post.audioUrl}
+          duration={post.audioDuration}
+        />
+      ) : null}
 
       {/* Рядок дій (кнопки лайка, коментаря, закладки) */}
       <View className="flex-row items-center justify-between px-3 py-3">
@@ -232,6 +243,57 @@ export const Post = ({ post }: PostProps) => {
           />
         )}
       </View>
+
+      {/* Модальне вікно безпечного видалення публікації */}
+      {isOwner && (
+        <Modal
+          visible={showDeleteModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDeleteModal(false)}
+        >
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <View className="flex-1 bg-black/80 justify-end p-4">
+              {/* Фоновий оверлей: натискання закриває модалку */}
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() => setShowDeleteModal(false)}
+              />
+
+              {/* Контент модального вікна */}
+              <View className="bg-surface border border-surfaceLight rounded-3xl p-5 gap-4">
+                <View className="items-center">
+                  <View className="w-12 h-12 rounded-full bg-red-500/20 items-center justify-center mb-3">
+                    <Ionicons name="trash-outline" size={26} color="#EF4444" />
+                  </View>
+                  <Text className="text-white text-lg font-bold mb-1">
+                    Видалити публікацію?
+                  </Text>
+                  <Text className="text-grey text-xs text-center px-4">
+                    Цю дію неможливо скасувати. Для підтвердження затисніть кнопку нижче на 1.2 секунди.
+                  </Text>
+                </View>
+
+                <HoldToConfirmButton
+                  title="Затисніть для видалення"
+                  confirmTitle="Видаляємо..."
+                  icon="trash-outline"
+                  variant="danger"
+                  durationMs={1200}
+                  onConfirm={handleConfirmDelete}
+                />
+
+                <TouchableOpacity
+                  onPress={() => setShowDeleteModal(false)}
+                  className="py-3 items-center"
+                >
+                  <Text className="text-grey text-sm font-medium">Скасувати</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </GestureHandlerRootView>
+        </Modal>
+      )}
     </View>
   );
 };

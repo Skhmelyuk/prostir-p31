@@ -20,6 +20,8 @@ export const createPost = mutation({
   args: {
     caption: v.optional(v.string()),
     storageId: v.id("_storage"),
+    audioStorageId: v.optional(v.id("_storage")),
+    audioDuration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -41,6 +43,12 @@ export const createPost = mutation({
       );
     }
 
+    // Отримуємо URL аудіозапису, якщо його було додано
+    let audioUrl: string | undefined = undefined;
+    if (args.audioStorageId) {
+      audioUrl = (await ctx.storage.getUrl(args.audioStorageId)) ?? undefined;
+    }
+
     // Вставляємо пост в таблицю "posts"
     const postId = await ctx.db.insert("posts", {
       userId,
@@ -49,6 +57,9 @@ export const createPost = mutation({
       caption: args.caption,
       likes: 0,
       comments: 0,
+      audioUrl,
+      audioStorageId: args.audioStorageId,
+      audioDuration: args.audioDuration,
     });
 
     // Оновлюємо лічильник постів користувача
@@ -160,10 +171,25 @@ export const deletePost = mutation({
       await ctx.db.delete(bookmark._id);
     }
 
-    // 4. Видаляємо зображення зі Storage
-    await ctx.storage.delete(post.storageId);
+    // 4. Видаляємо зображення зі Storage (якщо файл існує)
+    try {
+      if (post.storageId) {
+        await ctx.storage.delete(post.storageId);
+      }
+    } catch (storageError) {
+      console.warn("Попередження при видаленні файлу зі Storage:", storageError);
+    }
 
-    // 5. Видаляємо сам документ посту
+    // 5. Видаляємо аудіофайл зі Storage (якщо файл існує)
+    try {
+      if (post.audioStorageId) {
+        await ctx.storage.delete(post.audioStorageId);
+      }
+    } catch (audioError) {
+      console.warn("Попередження при видаленні аудіо зі Storage:", audioError);
+    }
+
+    // 6. Видаляємо сам документ посту
     await ctx.db.delete(args.postId);
 
     // 6. Зменшуємо кількість постів користувача
