@@ -18,13 +18,15 @@ import { formatDistanceToNow } from "date-fns";
 import { CommentsModal } from "./CommentsModal";
 import { HoldToConfirmButton } from "./HoldToConfirmButton";
 import { PostAudioPlayer } from "./PostAudioPlayer";
+import { VideoNotePlayer } from "./VideoNotePlayer";
+import { ImageViewerModal } from "./ImageViewerModal";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
 
 export type PostProps = {
   post: {
     _id: Id<"posts">;
-    imageUrl: string;
+    imageUrl?: string;
     caption?: string;
     likes: number;
     comments: number;
@@ -33,6 +35,9 @@ export type PostProps = {
     isBookmarked: boolean;
     audioUrl?: string;
     audioDuration?: number;
+    videoUrl?: string;
+    videoDuration?: number;
+    isVideoNote?: boolean;
     author: {
       _id?: Id<"users">;
       username: string;
@@ -63,6 +68,7 @@ export const Post = ({ post }: PostProps) => {
   const [commentsCount, setCommentsCount] = useState(post.comments);
   const [showComments, setShowComments] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
 
   // Перевірка, чи пост належить поточному користувачу
   const isOwner = currentUser?._id === post.author._id;
@@ -158,12 +164,27 @@ export const Post = ({ post }: PostProps) => {
         )}
       </View>
 
-      {/* Зображення поста */}
-      <Image
-        source={{ uri: post.imageUrl }}
-        className="w-full aspect-square bg-surface"
-        resizeMode="cover"
-      />
+      {/* Медіаконтент поста: або відеокружечок, або зображення */}
+      {post.videoUrl && post.isVideoNote ? (
+        <View className="w-full aspect-square bg-surface/40 items-center justify-center py-4">
+          <VideoNotePlayer
+            videoUrl={post.videoUrl}
+            duration={post.videoDuration}
+            size={260}
+          />
+        </View>
+      ) : post.imageUrl ? (
+        <TouchableOpacity
+          activeOpacity={0.95}
+          onPress={() => setIsImageViewerVisible(true)}
+        >
+          <Image
+            source={{ uri: post.imageUrl }}
+            className="w-full aspect-square bg-surface"
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+      ) : null}
 
       {/* Аудіодоріжка публікації (якщо додано) */}
       {post.audioUrl ? (
@@ -240,6 +261,15 @@ export const Post = ({ post }: PostProps) => {
             visible={showComments}
             onClose={() => setShowComments(false)}
             onCommentsCountChange={setCommentsCount}
+          />
+        )}
+
+        {/* Повноекранний переглядач фотографії з жестами зуму */}
+        {post.imageUrl && (
+          <ImageViewerModal
+            visible={isImageViewerVisible}
+            imageUrl={post.imageUrl}
+            onClose={() => setIsImageViewerVisible(false)}
           />
         )}
       </View>

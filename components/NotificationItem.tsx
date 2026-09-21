@@ -15,7 +15,7 @@ export interface NotificationProps {
     };
     post: {
       _id: Id<"posts">;
-      imageUrl: string;
+      imageUrl?: string;
     } | null;
     comment?: string;
     _creationTime: number;
@@ -84,11 +84,17 @@ export function NotificationItem({ notification }: NotificationProps) {
           onPress={() => router.push(`/post/${notification.post!._id}`)}
           activeOpacity={0.8}
         >
-          <Image
-            source={{ uri: notification.post.imageUrl }}
-            className="w-11 h-11 rounded-lg bg-surface"
-            resizeMode="cover"
-          />
+          {notification.post.imageUrl ? (
+            <Image
+              source={{ uri: notification.post.imageUrl }}
+              className="w-11 h-11 rounded-lg bg-surface"
+              resizeMode="cover"
+            />
+          ) : (
+            <View className="w-11 h-11 rounded-lg bg-surface items-center justify-center border border-surfaceLight">
+              <Ionicons name="videocam" size={20} color="#FFFFFF" />
+            </View>
+          )}
         </TouchableOpacity>
       )}
     </View>

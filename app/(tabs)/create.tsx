@@ -29,6 +29,8 @@ import {
   requestRecordingPermissionsAsync,
 } from "expo-audio";
 import { PostAudioPlayer } from "@/components/PostAudioPlayer";
+import { VideoNoteRecorder } from "@/components/VideoNoteRecorder";
+import { VideoNotePlayer } from "@/components/VideoNotePlayer";
 
 export default function CreateScreen() {
   const router = useRouter();
@@ -42,6 +44,11 @@ export default function CreateScreen() {
   const [caption, setCaption] = useState<string>("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+
+  // Стан для відеокружечків
+  const [showVideoRecorder, setShowVideoRecorder] = useState(false);
+  const [recordedVideoUri, setRecordedVideoUri] = useState<string | null>(null);
+  const [recordedVideoDuration, setRecordedVideoDuration] = useState<number>(0);
 
   // Хуки для запису аудіосповіщення через expo-audio
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -61,6 +68,8 @@ export default function CreateScreen() {
 
     if (!result.canceled) {
       setSelectedImage(result.assets[0].uri);
+      setRecordedVideoUri(null);
+      setRecordedVideoDuration(0);
     }
   };
 
@@ -83,6 +92,8 @@ export default function CreateScreen() {
 
     if (!result.canceled) {
       setSelectedImage(result.assets[0].uri);
+      setRecordedVideoUri(null);
+      setRecordedVideoDuration(0);
     }
   };
 
@@ -123,9 +134,13 @@ export default function CreateScreen() {
     setRecordedDuration(0);
   };
 
-  // Головна функція для вибору способу додавання зображення
-  const pickImage = () => {
-    Alert.alert("Оберіть дію", "Оберіть джерело для додавання зображення", [
+  // Головна функція для вибору способу додавання контенту
+  const pickMedia = () => {
+    Alert.alert("Оберіть дію", "Оберіть формат створення публікації", [
+      {
+        text: "Записати відеокружечок 📹",
+        onPress: () => setShowVideoRecorder(true),
+      },
       {
         text: "Зробити фото",
         onPress: takePhoto,
@@ -141,28 +156,54 @@ export default function CreateScreen() {
     ]);
   };
 
-  // Завантаження зображення у Convex Storage та публікація поста
+  // Завантаження файлів у Convex Storage та публікація поста
   const handleShare = async () => {
-    if (!selectedImage) return;
+    if (!selectedImage && !recordedVideoUri) {
+      Alert.alert("Увага", "Оберіть зображення або запишіть відеокружечок.");
+      return;
+    }
 
     try {
       setIsSharing(true);
 
-      // 1. Отримуємо одноразове посилання для завантаження зображення
-      const imageUploadUrl = await generateUploadUrl();
-      const imageFile = new File(selectedImage);
+      let storageId: Id<"_storage"> | undefined = undefined;
+      let videoStorageId: Id<"_storage"> | undefined = undefined;
 
-      // 2. Завантажуємо зображення через expo/fetch API
-      const imageUploadResult = await fetch(imageUploadUrl, {
-        method: "POST",
-        body: imageFile,
-        headers: {
-          "Content-Type": "image/jpeg",
-        },
-      });
+      // 1. Завантажуємо зображення (якщо є)
+      if (selectedImage) {
+        const imageUploadUrl = await generateUploadUrl();
+        const imageFile = new File(selectedImage);
 
-      if (!imageUploadResult.ok) throw new Error("Помилка завантаження зображення");
-      const { storageId } = await imageUploadResult.json();
+        const imageUploadResult = await fetch(imageUploadUrl, {
+          method: "POST",
+          body: imageFile,
+          headers: {
+            "Content-Type": "image/jpeg",
+          },
+        });
+
+        if (!imageUploadResult.ok) throw new Error("Помилка завантаження зображення");
+        const imageData = await imageUploadResult.json();
+        storageId = imageData.storageId;
+      }
+
+      // 2. Завантажуємо відеокружечок (якщо записано)
+      if (recordedVideoUri) {
+        const videoUploadUrl = await generateUploadUrl();
+        const videoFile = new File(recordedVideoUri);
+
+        const videoUploadResult = await fetch(videoUploadUrl, {
+          method: "POST",
+          body: videoFile,
+          headers: {
+            "Content-Type": "video/mp4",
+          },
+        });
+
+        if (!videoUploadResult.ok) throw new Error("Помилка завантаження відео");
+        const videoData = await videoUploadResult.json();
+        videoStorageId = videoData.storageId;
+      }
 
       // 3. Якщо записано аудіо — завантажуємо аудіофайл у Storage
       let audioStorageId: Id<"_storage"> | undefined = undefined;
@@ -189,6 +230,9 @@ export default function CreateScreen() {
       // 4. Створюємо пост із посиланням на файли у БД
       await createPost({
         storageId,
+        videoStorageId,
+        videoDuration: recordedVideoDuration > 0 ? recordedVideoDuration : undefined,
+        isVideoNote: !!recordedVideoUri,
         caption,
         audioStorageId,
         audioDuration: recordedDuration > 0 ? Math.round(recordedDuration) : undefined,
@@ -196,6 +240,8 @@ export default function CreateScreen() {
 
       // 5. Очищаємо форму та перенаправляємо на головний екран
       setSelectedImage(null);
+      setRecordedVideoUri(null);
+      setRecordedVideoDuration(0);
       setCaption("");
       setRecordedAudioUri(null);
       setRecordedDuration(0);
@@ -205,15 +251,15 @@ export default function CreateScreen() {
       console.error("Error sharing post:", error);
       Alert.alert(
         "Помилка",
-        "Не вдалося завантажити зображення або створити пост.",
+        "Не вдалося завантажити медіа або створити пост.",
       );
     } finally {
       setIsSharing(false);
     }
   };
 
-  // Якщо картинка ще не обрана, показуємо екран вибору
-  if (!selectedImage) {
+  // Якщо медіа ще не обране, показуємо стартовий екран вибору
+  if (!selectedImage && !recordedVideoUri) {
     return (
       <View className="flex-1 bg-black">
         <View className="flex-row items-center justify-between px-4 py-3 border-b border-surface">
@@ -224,18 +270,48 @@ export default function CreateScreen() {
           <View className="w-7" />
         </View>
 
-        <TouchableOpacity
-          className="flex-1 justify-center items-center gap-3 p-6"
-          onPress={pickImage}
-          activeOpacity={0.8}
-        >
-          <View className="w-20 h-20 rounded-full bg-surface border border-surfaceLight items-center justify-center">
-            <Ionicons name="image-outline" size={40} color={COLORS.grey} />
-          </View>
-          <Text className="text-grey text-base font-medium">
-            Натисніть, щоб обрати фото
-          </Text>
-        </TouchableOpacity>
+        <View className="flex-1 justify-center items-center gap-6 p-6">
+          <TouchableOpacity
+            className="w-full bg-surface border border-surfaceLight rounded-3xl p-6 items-center gap-3 active:opacity-80"
+            onPress={() => setShowVideoRecorder(true)}
+          >
+            <View className="w-16 h-16 rounded-full bg-primary/20 items-center justify-center">
+              <Ionicons name="videocam" size={32} color={COLORS.primary} />
+            </View>
+            <Text className="text-white text-base font-semibold">
+              Записати відеокружечок
+            </Text>
+            <Text className="text-grey text-xs text-center">
+              Фронтальна камера, круглий видошукач до 60 с
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            className="w-full bg-surface border border-surfaceLight rounded-3xl p-6 items-center gap-3 active:opacity-80"
+            onPress={pickMedia}
+          >
+            <View className="w-16 h-16 rounded-full bg-surfaceLight items-center justify-center">
+              <Ionicons name="image-outline" size={32} color={COLORS.grey} />
+            </View>
+            <Text className="text-white text-base font-semibold">
+              Додати фотографію
+            </Text>
+            <Text className="text-grey text-xs text-center">
+              Зробіть знімок або оберіть із галереї
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Модальне вікно запису відеокружечка */}
+        <VideoNoteRecorder
+          visible={showVideoRecorder}
+          onClose={() => setShowVideoRecorder(false)}
+          onFinishRecording={(uri, duration) => {
+            setRecordedVideoUri(uri);
+            setRecordedVideoDuration(duration);
+            setSelectedImage(null);
+          }}
+        />
       </View>
     );
   }
@@ -253,6 +329,8 @@ export default function CreateScreen() {
           <TouchableOpacity
             onPress={() => {
               setSelectedImage(null);
+              setRecordedVideoUri(null);
+              setRecordedVideoDuration(0);
               setCaption("");
               setRecordedAudioUri(null);
               setRecordedDuration(0);
@@ -270,9 +348,9 @@ export default function CreateScreen() {
 
           <TouchableOpacity
             className={`px-3 py-1.5 min-w-[70px] items-center justify-center rounded-xl bg-primary active:opacity-90 ${
-              isSharing || !selectedImage ? "opacity-50" : ""
+              isSharing || (!selectedImage && !recordedVideoUri) ? "opacity-50" : ""
             }`}
-            disabled={isSharing || !selectedImage}
+            disabled={isSharing || (!selectedImage && !recordedVideoUri)}
             onPress={handleShare}
           >
             {isSharing ? (
@@ -289,20 +367,29 @@ export default function CreateScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View className={`flex-1 ${isSharing ? "opacity-70" : ""}`}>
-            {/* Секція зображення */}
+            {/* Секція медіаконтенту: або відеокружечок, або зображення */}
             <View className="w-full aspect-square bg-surface relative justify-center items-center">
-              <Image
-                source={{ uri: selectedImage }}
-                className="w-full h-full"
-                resizeMode="cover"
-              />
+              {recordedVideoUri ? (
+                <VideoNotePlayer
+                  videoUrl={recordedVideoUri}
+                  duration={recordedVideoDuration}
+                  size={260}
+                />
+              ) : selectedImage ? (
+                <Image
+                  source={{ uri: selectedImage }}
+                  className="w-full h-full"
+                  resizeMode="cover"
+                />
+              ) : null}
+
               <TouchableOpacity
-                className="absolute bottom-4 right-4 bg-black/75 flex-row items-center px-3 py-2 rounded-xl gap-1.5"
-                onPress={pickImage}
+                className="absolute bottom-4 right-4 bg-black/75 flex-row items-center px-3 py-2 rounded-xl gap-1.5 border border-white/10"
+                onPress={pickMedia}
                 disabled={isSharing}
                 activeOpacity={0.8}
               >
-                <Ionicons name="image-outline" size={18} color="#FFFFFF" />
+                <Ionicons name="refresh-outline" size={18} color="#FFFFFF" />
                 <Text className="text-white text-xs font-semibold">
                   Змінити
                 </Text>
@@ -358,13 +445,17 @@ export default function CreateScreen() {
                 ) : (
                   <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center gap-2">
-                      <View
-                        className={`w-3 h-3 rounded-full ${
-                          recorderState.isRecording
-                            ? "bg-red-500"
-                            : "bg-grey"
-                        }`}
-                      />
+                      {recorderState.isRecording ? (
+                        <View
+                          key="audio-rec-active"
+                          className="w-3 h-3 rounded-full bg-red-500"
+                        />
+                      ) : (
+                        <View
+                          key="audio-rec-idle"
+                          className="w-3 h-3 rounded-full bg-grey"
+                        />
+                      )}
                       <Text className="text-white text-sm">
                         {recorderState.isRecording
                           ? `Запис: ${Math.floor((recorderState.durationMillis || 0) / 1000)} с`
@@ -396,6 +487,17 @@ export default function CreateScreen() {
             </View>
           </View>
         </ScrollView>
+
+        {/* Модальне вікно запису відеокружечка */}
+        <VideoNoteRecorder
+          visible={showVideoRecorder}
+          onClose={() => setShowVideoRecorder(false)}
+          onFinishRecording={(uri, duration) => {
+            setRecordedVideoUri(uri);
+            setRecordedVideoDuration(duration);
+            setSelectedImage(null);
+          }}
+        />
       </View>
     </KeyboardAvoidingView>
   );

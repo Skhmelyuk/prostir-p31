@@ -1,6 +1,8 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
+import { Doc, Id } from "./_generated/dataModel";
 
 /**
  * Генерує тимчасове посилання для завантаження файлу в Convex Storage
@@ -19,9 +21,12 @@ export const generateUploadUrl = mutation(async (ctx) => {
 export const createPost = mutation({
   args: {
     caption: v.optional(v.string()),
-    storageId: v.id("_storage"),
+    storageId: v.optional(v.id("_storage")),
     audioStorageId: v.optional(v.id("_storage")),
     audioDuration: v.optional(v.number()),
+    videoStorageId: v.optional(v.id("_storage")),
+    videoDuration: v.optional(v.number()),
+    isVideoNote: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -35,18 +40,27 @@ export const createPost = mutation({
       throw new Error("User not found: Користувача не знайдено");
     }
 
-    // Отримуємо публічне посилання на завантажене зображення
-    const imageUrl = await ctx.storage.getUrl(args.storageId);
-    if (!imageUrl) {
-      throw new Error(
-        "Image URL not found: Не вдалося згенерувати посилання на зображення",
-      );
+    // Отримуємо публічне посилання на завантажене зображення (якщо є)
+    let imageUrl: string | undefined = undefined;
+    if (args.storageId) {
+      imageUrl = (await ctx.storage.getUrl(args.storageId)) ?? undefined;
     }
 
     // Отримуємо URL аудіозапису, якщо його було додано
     let audioUrl: string | undefined = undefined;
     if (args.audioStorageId) {
       audioUrl = (await ctx.storage.getUrl(args.audioStorageId)) ?? undefined;
+    }
+
+    // Отримуємо URL відеокружечка, якщо його було додано
+    let videoUrl: string | undefined = undefined;
+    if (args.videoStorageId) {
+      videoUrl = (await ctx.storage.getUrl(args.videoStorageId)) ?? undefined;
+    }
+
+    // Перевіряємо наявність хоча б одного медіафайлу
+    if (!imageUrl && !videoUrl) {
+      throw new Error("Помилка: пост повинен містити зображення або відеокружечок.");
     }
 
     // Вставляємо пост в таблицю "posts"
@@ -60,6 +74,10 @@ export const createPost = mutation({
       audioUrl,
       audioStorageId: args.audioStorageId,
       audioDuration: args.audioDuration,
+      videoUrl,
+      videoStorageId: args.videoStorageId,
+      videoDuration: args.videoDuration,
+      isVideoNote: args.isVideoNote,
     });
 
     // Оновлюємо лічильник постів користувача
@@ -70,6 +88,7 @@ export const createPost = mutation({
     return postId;
   },
 });
+
 
 export const getPosts = query({
   handler: async (ctx) => {
@@ -189,7 +208,16 @@ export const deletePost = mutation({
       console.warn("Попередження при видаленні аудіо зі Storage:", audioError);
     }
 
-    // 6. Видаляємо сам документ посту
+    // 6. Видаляємо відеокружечок зі Storage (якщо файл існує)
+    try {
+      if (post.videoStorageId) {
+        await ctx.storage.delete(post.videoStorageId);
+      }
+    } catch (videoError) {
+      console.warn("Попередження при видаленні відео зі Storage:", videoError);
+    }
+
+    // 7. Видаляємо сам документ посту
     await ctx.db.delete(args.postId);
 
     // 6. Зменшуємо кількість постів користувача
@@ -272,5 +300,106 @@ export const getPostsByUser = query({
       .collect();
 
     return posts;
+  },
+});
+
+export const getPaginatedPosts = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+
+    type PostWithInfo = Doc<"posts"> & {
+      author: {
+        _id?: Id<"users">;
+        username: string;
+        image: string;
+      };
+      isLiked: boolean;
+      isBookmarked: boolean;
+    };
+
+    if (userId === null) {
+      return {
+        page: [] as PostWithInfo[],
+        isDone: true,
+        continueCursor: "",
+      };
+    }
+
+    // 1. Завантажуємо порцію постів за курсором (наприклад, 5 або 10 штук)
+    const paginated = await ctx.db
+      .query("posts")
+      .order("desc")
+      .paginate(args.paginationOpts);
+
+    // 2. Збагачуємо інформацією ТІЛЬКИ пости поточної завантаженої сторінки!
+    const postsWithInfo: PostWithInfo[] = await Promise.all(
+      paginated.page.map(async (post) => {
+        const postAuthor = await ctx.db.get(post.userId);
+
+        const like = await ctx.db
+          .query("likes")
+          .withIndex("by_user_and_post", (q) =>
+            q.eq("userId", userId).eq("postId", post._id),
+          )
+          .first();
+
+        const bookmark = await ctx.db
+          .query("bookmarks")
+          .withIndex("by_both", (q) =>
+            q.eq("userId", userId).eq("postId", post._id),
+          )
+          .first();
+
+        return {
+          ...post,
+          author: {
+            _id: postAuthor?._id,
+            username:
+              postAuthor?.username ??
+              postAuthor?.name ??
+              "користувач",
+            image:
+              postAuthor?.image ??
+              "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde",
+          },
+          isLiked: !!like,
+          isBookmarked: !!bookmark,
+        };
+      }),
+    );
+
+    return {
+      ...paginated,
+      page: postsWithInfo,
+    };
+  },
+});
+
+/**
+ * Отримує пости вказаного або поточного користувача з пагінацією (для сітки профілю 3x3)
+ */
+export const getPaginatedPostsByUser = query({
+  args: {
+    userId: v.optional(v.id("users")),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const userId = args.userId ?? (await getAuthUserId(ctx));
+    if (!userId) {
+      return {
+        page: [],
+        isDone: true,
+        continueCursor: "",
+      };
+    }
+
+    return await ctx.db
+      .query("posts")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .paginate(args.paginationOpts);
   },
 });
