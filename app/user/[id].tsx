@@ -42,6 +42,7 @@ export default function UserProfileScreen() {
   });
 
   const toggleFollow = useMutation(api.follows.toggleFollow);
+  const getOrCreateConversation = useMutation(api.messages.getOrCreateConversation);
 
   const isSelf = currentUser?._id === targetUserId;
 
@@ -50,6 +51,17 @@ export default function UserProfileScreen() {
       await toggleFollow({ followingId: targetUserId });
     } catch (error) {
       console.error("Помилка зміни підписки:", error);
+    }
+  };
+
+  const handleOpenDirectChat = async () => {
+    try {
+      const conversationId = await getOrCreateConversation({
+        recipientId: targetUserId,
+      });
+      router.push(`/messages/${conversationId}`);
+    } catch (error) {
+      console.error("Помилка відкриття чату:", error);
     }
   };
 
@@ -155,19 +167,29 @@ export default function UserProfileScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            onPress={handleFollowPress}
-            className={`w-full py-2.5 rounded-xl items-center justify-center ${
-              isFollowingUser
-                ? "bg-surface border border-surfaceLight active:bg-surfaceLight"
-                : "bg-primary active:opacity-80"
-            }`}
-            activeOpacity={0.8}
-          >
-            <Text className="text-white font-semibold text-sm">
-              {isFollowingUser ? "Ви стежите" : "Стежити"}
-            </Text>
-          </TouchableOpacity>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={handleFollowPress}
+              className={`flex-1 py-2.5 rounded-xl items-center justify-center ${
+                isFollowingUser
+                  ? "bg-surface border border-surfaceLight active:bg-surfaceLight"
+                  : "bg-primary active:opacity-80"
+              }`}
+              activeOpacity={0.8}
+            >
+              <Text className="text-white font-semibold text-sm">
+                {isFollowingUser ? "Ви стежите" : "Стежити"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleOpenDirectChat}
+              className="flex-1 bg-surface border border-surfaceLight py-2.5 rounded-xl items-center justify-center active:bg-surfaceLight"
+              activeOpacity={0.8}
+            >
+              <Text className="text-white font-semibold text-sm">Повідомлення</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 

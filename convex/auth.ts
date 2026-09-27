@@ -1,5 +1,7 @@
+import Google from "@auth/core/providers/google";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Password({
@@ -11,5 +13,24 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         };
       },
     }),
+    Google({
+      profile(params) {
+        return {
+          id: params.sub,
+          email: params.email,
+          fullname: params.name,
+          name: params.name,
+          image: params.picture,
+        };
+      },
+    }),
   ],
+  callbacks: {
+    async redirect({ redirectTo }) {
+      // Дозволяємо повернення у мобільний додаток через deep link (prostirp31://, prostirp31-dev://)
+      return redirectTo;
+    },
+  },
 });
+
+

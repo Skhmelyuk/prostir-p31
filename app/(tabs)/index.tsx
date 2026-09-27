@@ -14,11 +14,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/theme";
 import { StoriesSection } from "@/components/StoriesSection";
 import { useState } from "react";
+import { useRouter } from "expo-router";
 
 // Кількість постів на одну сторінку
 const PAGE_SIZE = 5;
 
 export default function FeedScreen() {
+  const router = useRouter();
   const { signOut } = useAuthActions();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -56,12 +58,22 @@ export default function FeedScreen() {
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-surface">
         <Text className="text-2xl font-bold text-primary">Prostir</Text>
 
-        <TouchableOpacity
-          onPress={() => signOut()}
-          className="p-1 active:opacity-70"
-        >
-          <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View className="flex-row items-center gap-3">
+          {/* Кнопка переходу у список чатів */}
+          <TouchableOpacity
+            onPress={() => router.push("/messages")}
+            className="p-1 active:opacity-70"
+          >
+            <Ionicons name="paper-plane-outline" size={23} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => signOut()}
+            className="p-1 active:opacity-70"
+          >
+            <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Стрічка постів з нескінченним скролом */}

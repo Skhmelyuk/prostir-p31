@@ -13,6 +13,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const { signIn } = useAuthActions();
@@ -22,6 +26,37 @@ export default function LoginScreen() {
   const [name, setName] = useState(""); // Поле для імені при реєстрації
   const [isSignUp, setIsSignUp] = useState(false); // Перемикач Вхід / Реєстрація
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsGoogleLoading(true);
+      const redirectTo = Linking.createURL("");
+
+      const { redirect } = await signIn("google", { redirectTo });
+      if (!redirect) return;
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        redirect.toString(),
+        redirectTo
+      );
+
+      if (result.type === "success" && result.url) {
+        const code = new URL(result.url).searchParams.get("code");
+        if (code) {
+          await signIn("google", { code });
+        }
+      }
+    } catch (error) {
+      console.error("Google Auth Error:", error);
+      Alert.alert(
+        "Помилка входу",
+        "Не вдалося виконати авторизацію через Google. Спробуйте ще раз."
+      );
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
@@ -152,25 +187,54 @@ export default function LoginScreen() {
 
           {/* Кнопка відправки форми */}
           <TouchableOpacity
-            className={`flex-row items-center justify-center bg-white rounded-2xl py-3.5 w-full max-w-xs mt-2.5 active:opacity-90 ${
-              isLoading ? "opacity-60" : ""
+            className={`flex-row items-center justify-center bg-primary rounded-2xl py-3.5 w-full max-w-xs mt-2.5 active:opacity-90 ${
+              isLoading || isGoogleLoading ? "opacity-60" : ""
             }`}
             activeOpacity={0.9}
             onPress={handleAuth}
-            disabled={isLoading}
+            disabled={isLoading || isGoogleLoading}
           >
             {isLoading ? (
-              <ActivityIndicator color={COLORS.background} size="small" />
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Text className="text-black text-base font-semibold">
+              <Text className="text-white text-base font-semibold">
                 {isSignUp ? "Створити акаунт" : "Увійти"}
               </Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Розділювач "АБО" */}
+          <View className="flex-row items-center w-full max-w-xs my-2">
+            <View className="flex-1 h-[1px] bg-surfaceLight" />
+            <Text className="text-grey text-xs px-3 uppercase tracking-wider font-semibold">
+              або
+            </Text>
+            <View className="flex-1 h-[1px] bg-surfaceLight" />
+          </View>
+
+          {/* Кнопка входу через Google */}
+          <TouchableOpacity
+            onPress={handleGoogleSignIn}
+            disabled={isLoading || isGoogleLoading}
+            activeOpacity={0.85}
+            className="flex-row items-center justify-center gap-3 bg-white py-3.5 px-6 rounded-2xl w-full max-w-xs border border-surfaceLight"
+          >
+            {isGoogleLoading ? (
+              <ActivityIndicator size="small" color="#000000" />
+            ) : (
+              <>
+                <Ionicons name="logo-google" size={20} color="#EA4335" />
+                <Text className="text-black font-semibold text-base">
+                  Продовжити з Google
+                </Text>
+              </>
             )}
           </TouchableOpacity>
 
           {/* Перемикач Вхід / Реєстрація */}
           <TouchableOpacity
             onPress={() => setIsSignUp(!isSignUp)}
+            disabled={isLoading || isGoogleLoading}
             className="mt-2.5 py-2"
           >
             <Text className="text-primary text-sm font-medium">

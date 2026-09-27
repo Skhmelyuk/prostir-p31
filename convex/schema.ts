@@ -9,6 +9,10 @@ export default defineSchema({
     name: v.optional(v.string()),
     image: v.optional(v.string()),
     email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
     username: v.optional(v.string()),
     fullname: v.optional(v.string()),
     bio: v.optional(v.string()),
@@ -17,7 +21,7 @@ export default defineSchema({
     posts: v.optional(v.number()),
     pushToken: v.optional(v.string()),
   })
-    .index("by_email", ["email"])
+    .index("email", ["email"])
     .index("by_username", ["username"])
     .index("by_fullname", ["fullname"])
     .index("by_bio", ["bio"])
@@ -193,6 +197,26 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_expires", ["expiresAt"]),
+
+  conversations: defineTable({
+    participantIds: v.array(v.id("users")),
+    lastMessage: v.optional(v.string()),
+    lastMessageTime: v.number(),
+    lastSenderId: v.optional(v.id("users")),
+  }),
+
+  messages: defineTable({
+    conversationId: v.id("conversations"),
+    senderId: v.id("users"),
+    type: v.union(
+      v.literal("text"),
+      v.literal("audio"),
+      v.literal("video_note")
+    ),
+    text: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    duration: v.optional(v.number()),
+  }).index("by_conversation", ["conversationId"]),
 });
 
 /**
