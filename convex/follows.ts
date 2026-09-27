@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { internal } from "./_generated/api";
 
 /**
  * Перевіряє, чи підписаний поточний користувач на іншого користувача
@@ -83,6 +84,26 @@ export const toggleFollow = mutation({
         receiverId: args.followingId,
         senderId: userId,
       });
+
+      // Відправка push-сповіщення новому автору
+      if (following.pushToken && follower) {
+        const followerName =
+          follower.fullname ?? follower.username ?? follower.name ?? "Хтось";
+
+        await ctx.scheduler.runAfter(
+          0,
+          internal.pushNotifications.sendPushNotification,
+          {
+            pushToken: following.pushToken,
+            title: "Новий підписник 👤",
+            body: `${followerName} почав(-ла) стежити за вами`,
+            data: {
+              type: "follow",
+              userId: follower._id,
+            },
+          },
+        );
+      }
 
       return true; // Тепер стежить
     }

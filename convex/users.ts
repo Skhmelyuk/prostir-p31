@@ -157,3 +157,24 @@ export const getStoriesUsers = query({
   },
 });
 
+/**
+ * Зберігає або оновлює ExponentPushToken поточного авторизованого користувача
+ */
+export const savePushToken = mutation({
+  args: {
+    pushToken: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Unauthorized: Неавторизований доступ");
+    }
+
+    await ctx.db.patch(userId, {
+      pushToken: args.pushToken,
+    });
+
+    return { success: true };
+  },
+});
+

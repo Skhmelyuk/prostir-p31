@@ -3,8 +3,11 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export default function InitialLayout() {
+  usePushNotifications();
+
   const { isAuthenticated, isLoading } = useConvexAuth();
   const segments = useSegments();
   const router = useRouter();

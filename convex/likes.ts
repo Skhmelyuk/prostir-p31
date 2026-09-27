@@ -1,5 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { mutation } from "./_generated/server";
 
 /**
@@ -51,6 +52,29 @@ export const toggleLike = mutation({
           senderId: userId,
           postId: args.postId,
         });
+
+        // Відправка push-сповіщення автору допису
+        const receiver = await ctx.db.get(post.userId);
+        const sender = await ctx.db.get(userId);
+
+        if (receiver?.pushToken && sender) {
+          const senderName =
+            sender.fullname ?? sender.username ?? sender.name ?? "Хтось";
+
+          await ctx.scheduler.runAfter(
+            0,
+            internal.pushNotifications.sendPushNotification,
+            {
+              pushToken: receiver.pushToken,
+              title: "Новий лайк ❤️",
+              body: `${senderName} вподобав(ла) вашу публікацію`,
+              data: {
+                type: "like",
+                postId: args.postId,
+              },
+            },
+          );
+        }
       }
       return true; // Лайк успішно поставлено
     }

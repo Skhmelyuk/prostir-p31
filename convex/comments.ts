@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { internal } from "./_generated/api";
 
 /**
  * Додає коментар до поста та створює сповіщення для автора
@@ -40,6 +41,29 @@ export const addComment = mutation({
         postId: args.postId,
         commentId,
       });
+
+      // Відправка push-сповіщення автору посту
+      const receiver = await ctx.db.get(post.userId);
+      const sender = await ctx.db.get(userId);
+
+      if (receiver?.pushToken && sender) {
+        const senderName =
+          sender.fullname ?? sender.username ?? sender.name ?? "Хтось";
+
+        await ctx.scheduler.runAfter(
+          0,
+          internal.pushNotifications.sendPushNotification,
+          {
+            pushToken: receiver.pushToken,
+            title: "Новий коментар 💬",
+            body: `${senderName}: ${args.content}`,
+            data: {
+              type: "comment",
+              postId: args.postId,
+            },
+          },
+        );
+      }
     }
 
     return commentId;
